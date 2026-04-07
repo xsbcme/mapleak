@@ -134,6 +134,65 @@ npm CouchDB Changes Feed
          SSE 推送前端 → Dashboard 实时更新 → 图表联动刷新
 ```
 
+### PM2 部署（Linux / 宝塔面板）
+
+**前置要求**：Node.js ≥ 18、npm（PM2 会自动安装）
+
+适用于有 Linux 服务器、不想引入 Docker 的场景。前后端合一，Fastify 直接托管前端静态文件，无需单独的 Web 服务器。
+
+**第一步：本地打包**
+
+```bash
+pnpm map-leak:pm2:pack
+```
+
+该命令会自动构建前端，并将以下内容整合到 `deploy/pm2/` 目录：
+
+```
+deploy/pm2/
+├── src/                 ← 后端源码
+├── public/              ← 前端编译产物（Fastify 直接托管）
+├── package.json         ← 仅含生产依赖
+├── ecosystem.config.cjs ← PM2 配置
+├── .env.example         ← 环境变量示例
+└── start.sh             ← 一键启动脚本
+```
+
+**第二步：上传到服务器**
+
+将整个 `deploy/pm2/` 目录上传至服务器任意位置（如 `/opt/map-leak/`）。
+
+**第三步：一键启动**
+
+```bash
+bash start.sh        # 默认端口 3001
+bash start.sh 8080   # 指定端口
+```
+
+脚本会自动完成依赖安装、PM2 安装、服务启动与开机自启配置。完成后访问 `http://<服务器IP>:3001`。
+
+**常用命令**：
+
+```bash
+pm2 logs map-leak      # 实时日志
+pm2 restart map-leak   # 重启服务
+pm2 stop map-leak      # 停止服务
+pm2 status             # 查看进程状态
+```
+
+**环境变量**（修改 `ecosystem.config.cjs` 中的 `env` 字段，或参考 `.env.example`）：
+
+| 变量                | 默认值         | 说明                                                                     |
+| ------------------- | -------------- | ------------------------------------------------------------------------ |
+| `API_PORT`          | `3001`         | 监听端口                                                                 |
+| `CONCURRENCY`       | `5`            | 并发扫描 Worker 数量                                                     |
+| `SCAN_INTERVAL`     | `*/30 * * * *` | cron 表达式，扫描频率                                                    |
+| `SCAN_NODE_MODULES` | 空（关闭）     | 设为 `1` 时扫描 tarball 内 `node_modules/` 下的 `.map`（第三方依赖泄露）|
+| `WEBHOOK_URL`       | 空             | 新泄露发现时 POST 通知地址（可选）                                       |
+| `DB_PATH`           | 空（工作目录） | 自定义 SQLite 数据库路径（如 `/data/mapleak/data.db`）                   |
+
+---
+
 ### Docker 一键部署
 
 **前置要求**：Docker ≥ 20、Docker Compose v2
@@ -308,6 +367,65 @@ npm CouchDB Changes Feed
          SSE push to frontend → Dashboard updates live → charts refresh
 ```
 
+### PM2 Deployment (Linux / BT Panel)
+
+**Requirements**: Node.js ≥ 18, npm (PM2 is installed automatically)
+
+Ideal for Linux servers without Docker. Frontend static files are served directly by Fastify — no separate web server needed.
+
+**Step 1: Build the deployment package locally**
+
+```bash
+pnpm map-leak:pm2:pack
+```
+
+This builds the frontend and assembles the following into `deploy/pm2/`:
+
+```
+deploy/pm2/
+├── src/                 ← backend source code
+├── public/              ← compiled frontend (served by Fastify)
+├── package.json         ← production dependencies only
+├── ecosystem.config.cjs ← PM2 configuration
+├── .env.example         ← environment variable reference
+└── start.sh             ← one-click launch script
+```
+
+**Step 2: Upload to server**
+
+Upload the entire `deploy/pm2/` directory to any location on your server (e.g. `/opt/map-leak/`).
+
+**Step 3: Launch**
+
+```bash
+bash start.sh        # default port 3001
+bash start.sh 8080   # custom port
+```
+
+The script automatically installs dependencies, installs PM2 if needed, starts the service, and configures startup on boot. Once done, visit `http://<server-ip>:3001`.
+
+**Useful commands**:
+
+```bash
+pm2 logs map-leak      # tail live logs
+pm2 restart map-leak   # restart service
+pm2 stop map-leak      # stop service
+pm2 status             # check process status
+```
+
+**Environment variables** (edit the `env` block in `ecosystem.config.cjs`, or refer to `.env.example`):
+
+| Variable            | Default        | Description                                                                                           |
+| ------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
+| `API_PORT`          | `3001`         | Listening port                                                                                        |
+| `CONCURRENCY`       | `5`            | Concurrent scanner workers                                                                            |
+| `SCAN_INTERVAL`     | `*/30 * * * *` | cron expression for scan frequency                                                                    |
+| `SCAN_NODE_MODULES` | _(empty, off)_ | Set to `1` to scan `.map` files inside `node_modules/` within tarballs                               |
+| `WEBHOOK_URL`       | _(empty)_      | POST notification URL on new leak (optional)                                                          |
+| `DB_PATH`           | _(empty)_      | Custom SQLite path (e.g. `/data/mapleak/data.db`); defaults to working directory                      |
+
+---
+
 ### One-Click Docker Deployment
 
 **Requirements**: Docker ≥ 20, Docker Compose v2
@@ -329,7 +447,7 @@ After deployment, the console prints the access URL. Default: [http://localhost:
 **Useful commands**:
 
 ```bash
-pnpm map-leak:deploy   # equivalent to docker compose -f deploy/docker/docker-compose.yml up -d --build
+pnpm map-leak:docker:deploy   # equivalent to docker compose -f deploy/docker/docker-compose.yml up -d --build
 pnpm map-leak:docker:logs     # tail live logs
 docker compose -f deploy/docker/docker-compose.yml down    # stop and remove containers (data volume preserved)
 ```

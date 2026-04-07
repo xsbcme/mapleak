@@ -1,0 +1,31 @@
+# 构建产物
+dist/
+deploy/pm2/
+
+# 依赖
+node_modules/
+
+# 锁文件（不格式化，保持工具原生格式）
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# 静态资源（binary / 打包后 JS）
+upload/public/
+**/assets/*.js
+
+# 二进制 / 压缩文件
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.ico
+*.zip
+*.tar
+*.tgz
+
+# 数据库
+*.db
+*.db-shm
+*.db-wal

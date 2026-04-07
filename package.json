@@ -1,0 +1,25 @@
+{
+  "name": "lottery-monorepo",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "lint:prettier": "prettier --write '**/*.{ts,js,mjs,tsx,jsx,json,css,less,scss,vue,html,md}'",
+    "map-leak:server": "pnpm --filter @map-leak/server start",
+    "map-leak:web": "pnpm --filter @map-leak/web dev",
+    "map-leak:install": "pnpm --filter @map-leak/server install ; pnpm --filter @map-leak/web install",
+    "map-leak:build": "pnpm --filter @map-leak/web build",
+    "map-leak:pm2:pack": "pnpm map-leak:build && node scripts/pm2-pack.mjs",
+    "map-leak:docker:deploy": "docker compose -f deploy/docker/docker-compose.yml up -d --build",
+    "map-leak:docker:logs": "docker compose -f deploy/docker/docker-compose.yml logs -f map-leak"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.10.0",
+  "devDependencies": {
+    "@types/node": "^25.0.6",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  }
+}

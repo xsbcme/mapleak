@@ -1,0 +1,11 @@
+node_modules
+pnpm-lock.yaml
+dist
+.turbo
+CHANGELOG.md
+# 打包产物（pm2 部署）
+deploy/pm2/
+# 部署
+.env
+apps/map-leak-server/data.db
+apps/map-leak-server/data.db.lock/

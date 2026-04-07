@@ -1,0 +1,319 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* ── 背景层次（深蓝-海军风，可辨识的层级对比） */
+    --c-bg: #070e1c;
+    --c-surface: #0d1930;
+    --c-surface2: #122040;
+    --c-border: #1e3a62;
+    --c-border2: #2d5490;
+
+    /* ── 文字（高对比度） */
+    --c-text: #e8f1ff;
+    --c-text2: #94b4d8;
+    --c-muted: #4d7099;
+
+    /* ── 功能色 */
+    --c-accent: #38bdf8; /* sky-400 — 清晰可见的蓝 */
+    --c-danger: #f43f5e; /* rose-500 */
+    --c-warn: #fbbf24; /* amber-400 */
+    --c-ok: #34d399; /* emerald-400 */
+    --c-purple: #a78bfa; /* violet-400 */
+
+    /* ── 光晕（只在有意义的元素上使用） */
+    --glow-blue: 0 0 20px rgba(56, 189, 248, 0.3);
+    --glow-red: 0 0 20px rgba(244, 63, 94, 0.35);
+    --glow-green: 0 0 20px rgba(52, 211, 153, 0.3);
+
+    /* ── 顶栏背景（可随主题覆盖） */
+    --c-header-bg: rgba(7, 14, 28, 0.95);
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    font-size: 14px;
+  }
+
+  body {
+    background: var(--c-bg);
+    color: var(--c-text);
+    /* 正文用系统无衬线字体，保证可读性；数字/代码用 mono */
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      sans-serif;
+    overflow-x: hidden;
+    line-height: 1.5;
+  }
+
+  .font-mono {
+    font-family: ui-monospace, "JetBrains Mono", "Fira Code", monospace;
+  }
+
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--c-surface);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--c-border2);
+    border-radius: 3px;
+  }
+}
+
+/* ── 动画 ─────────────────────────────────────────────────────────────── */
+@keyframes slide-down {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes live-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 4px var(--c-ok);
+  }
+  50% {
+    box-shadow:
+      0 0 10px var(--c-ok),
+      0 0 20px var(--c-ok);
+  }
+}
+
+.anim-slide-down {
+  animation: slide-down 0.25s ease both;
+}
+.anim-fade-in {
+  animation: fade-in 0.2s ease both;
+}
+
+/* ── 面板 ─────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+}
+
+.panel-accent {
+  border-color: var(--c-accent);
+  box-shadow: var(--glow-blue);
+}
+
+/* ── 标签 ─────────────────────────────────────────────────────────────── */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.tag-blue {
+  color: var(--c-accent);
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+.tag-red {
+  color: var(--c-danger);
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.35);
+}
+.tag-yellow {
+  color: var(--c-warn);
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+.tag-green {
+  color: var(--c-ok);
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.35);
+}
+.tag-purple {
+  color: var(--c-purple);
+  background: rgba(167, 139, 250, 0.1);
+  border-color: rgba(167, 139, 250, 0.35);
+}
+.tag-muted {
+  color: var(--c-muted);
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--c-border);
+}
+
+/* ── 输入 / 按钮 ──────────────────────────────────────────────────────── */
+.ui-input {
+  background: var(--c-surface2);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  transition: border-color 0.15s;
+  outline: none;
+}
+.ui-input:focus {
+  border-color: var(--c-accent);
+}
+.ui-input::placeholder {
+  color: var(--c-muted);
+}
+
+/* select 下拉选项 —— 深色主题需显式设置，否则浏览器用系统白色背景 */
+select.ui-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%234d7099'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 26px;
+  cursor: pointer;
+}
+select.ui-input option {
+  background: var(--c-surface2);
+  color: var(--c-text);
+}
+
+.ui-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--c-border);
+  color: var(--c-text2);
+  border-radius: 6px;
+  padding: 5px 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.ui-btn:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: var(--c-accent);
+}
+.ui-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+/* ── SourceViewer 小操作按鈕（统一规范）────────────────────────── */
+.sv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid var(--c-border);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--c-muted);
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  outline: none;
+  transition:
+    opacity 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+.sv-btn:hover {
+  opacity: 0.8;
+}
+.sv-btn-icon {
+  width: 22px;
+  padding: 0;
+}
+.sv-btn-active {
+  color: var(--c-accent);
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.06);
+}
+.sv-btn-accent {
+  color: var(--c-accent);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+/* ── 区块标题 ─────────────────────────────────────────────────────────── */
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+}
+
+/* ── 分割线 ───────────────────────────────────────────────────────────── */
+.divider {
+  border-color: var(--c-border);
+}
+
+/* ── 主题变体 ────────────────────────────────────────────────────────── */
+
+/* 明亮 */
+[data-theme="light"] {
+  --c-bg: #f0f4f8;
+  --c-surface: #ffffff;
+  --c-surface2: #e8edf4;
+  --c-border: #ccd6e0;
+  --c-border2: #a8b8cc;
+  --c-text: #0f1929;
+  --c-text2: #3a5470;
+  --c-muted: #7090aa;
+  --c-accent: #0284c7;
+  --c-danger: #e11d48;
+  --c-warn: #d97706;
+  --c-ok: #059669;
+  --c-purple: #7c3aed;
+  --glow-blue: 0 0 20px rgba(2, 132, 199, 0.22);
+  --glow-red: 0 0 20px rgba(225, 29, 72, 0.22);
+  --glow-green: 0 0 20px rgba(5, 150, 105, 0.22);
+  --c-header-bg: rgba(240, 244, 248, 0.96);
+}
+
+/* 终端 */
+[data-theme="terminal"] {
+  --c-bg: #0a0f0a;
+  --c-surface: #0f1a0f;
+  --c-surface2: #162116;
+  --c-border: #1d3320;
+  --c-border2: #2a4f2a;
+  --c-text: #c8f5c8;
+  --c-text2: #80c080;
+  --c-muted: #4a7a4a;
+  --c-accent: #00e676;
+  --c-danger: #ff4466;
+  --c-warn: #ffd740;
+  --c-ok: #00e5ff;
+  --c-purple: #ce93d8;
+  --glow-blue: 0 0 20px rgba(0, 230, 118, 0.22);
+  --glow-red: 0 0 20px rgba(255, 68, 102, 0.22);
+  --glow-green: 0 0 20px rgba(0, 229, 255, 0.22);
+  --c-header-bg: rgba(10, 15, 10, 0.96);
+}

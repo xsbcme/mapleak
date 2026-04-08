@@ -112,12 +112,16 @@ function parseSourceMap(filePath, buffer) {
     return null;
   }
 
-  // 统计非空条目
-  const nonEmpty = contents.filter(c => typeof c === "string" && c.length > 0);
+  const sources = Array.isArray(map.sources) ? map.sources : [];
+
+  // 统计非空条目：与 extractAllSourceMaps 保持一致，过滤 node_modules/ 路径
+  // 部分包会将依赖的 node_modules 源码打包进 source map，但不应视为自身源码泄露
+  const nonEmpty = contents.filter(
+    (c, i) => typeof c === "string" && c.length > 0 && !sources[i]?.includes("node_modules/"),
+  );
   if (nonEmpty.length === 0) return null;
 
   const totalBytes = nonEmpty.reduce((sum, c) => sum + Buffer.byteLength(c, "utf8"), 0);
-  const sources = Array.isArray(map.sources) ? map.sources : [];
 
   // 检查是否引用了外部存储地址（如 Cloudflare R2、S3）
   const allText = sources.join(" ") + JSON.stringify(map.sourceRoot ?? "");

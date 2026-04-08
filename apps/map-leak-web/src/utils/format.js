@@ -49,3 +49,24 @@ export function parentPath(p) {
   const parts = normPath(p).split("/");
   return parts.length > 1 ? parts.slice(0, -1).join("/") : "";
 }
+
+/** 根据文件扩展名返回对应的色标色值 */
+export function extColor(p) {
+  return (
+    {
+      ts: "#38bdf8",
+      tsx: "#38bdf8",
+      js: "#fbbf24",
+      jsx: "#fbbf24",
+      mjs: "#fbbf24",
+      vue: "#34d399",
+      css: "#a78bfa",
+      scss: "#a78bfa",
+      less: "#a78bfa",
+      json: "#fb923c",
+      html: "#f87171",
+      htm: "#f87171",
+      md: "#94b4d8",
+    }[fileExt(p)] ?? "#4d7099"
+  );
+}

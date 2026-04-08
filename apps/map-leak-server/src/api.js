@@ -39,6 +39,7 @@ import {
 import { leakEvents } from "./events.js";
 import { extractSourceMap, extractAllSourceMaps } from "./scanner/detector.js";
 import { getWeeklyDownloads, batchFetchDownloads } from "./scanner/popularity.js";
+import { createHash } from "node:crypto";
 import { tryJson, fetchReadme, npmFetch } from "./utils.js";
 
 const PORT = parseInt(process.env.API_PORT ?? "3001", 10);
@@ -352,14 +353,17 @@ export async function buildApi() {
         return reply.code(502).send(fail(502, `提取失败: ${err.message}`));
       }
 
-      // 合并所有 .map 的源文件，附加来源标注，路径去重（保留首次出现）
-      const seen = new Set();
+      // 合并所有 .map 的源文件，按「路径+内容哈希」去重
+      // 同一源文件可能被多个 .map（cjs/esm/umd）重复引用，只保留首次出现
+      const seen = new Map(); // path → contentHash
       const files = [];
       for (const [mapFile, entries] of allResults) {
         for (const entry of entries) {
-          const isDup = seen.has(entry.path);
-          seen.add(entry.path);
-          files.push({ ...entry, mapFile, duplicate: isDup });
+          const contentHash = createHash("sha1").update(entry.content).digest("hex");
+          const prevHash = seen.get(entry.path);
+          if (prevHash !== undefined && prevHash === contentHash) continue; // 完全重复，跳过
+          seen.set(entry.path, contentHash);
+          files.push({ ...entry, mapFile });
         }
       }
 

@@ -480,6 +480,34 @@ export function updateDownloadsByName(name, count) {
   db.prepare("UPDATE findings_summary SET weekly_downloads = ? WHERE name = ?").run([count, name]);
 }
 
+/**
+ * 删除指定包版本的全部泄露记录（findings + findings_summary + findings_fts + scanned）
+ * 用于清理扫描器逻辑修复前产生的误判记录
+ * @param {string} name
+ * @param {string} version
+ * @returns {{ deletedFindings: number, deletedSummary: number }}
+ */
+export function deleteFindings(name, version) {
+  const db = getDb();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    // 先查 summary id，用于删 FTS 索引
+    const sumRow = db.prepare("SELECT id FROM findings_summary WHERE name = ? AND version = ?").get([name, version]);
+    const deletedFindings = db.prepare("DELETE FROM findings WHERE name = ? AND version = ?").run([name, version]).changes;
+    const deletedSummary = db.prepare("DELETE FROM findings_summary WHERE name = ? AND version = ?").run([name, version]).changes;
+    if (sumRow) {
+      db.prepare("DELETE FROM findings_fts WHERE rowid = ?").run([sumRow.id]);
+    }
+    // scanned 表保留记录但将 has_leak 置 0，防止重新入队扫描（包本身仍已扫描过）
+    db.prepare("UPDATE scanned SET has_leak = 0 WHERE name = ? AND version = ?").run([name, version]);
+    db.exec("COMMIT");
+    return { deletedFindings, deletedSummary };
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
 // ─── 统计 ─────────────────────────────────────────────────────────────────────
 
 export function getStats() {

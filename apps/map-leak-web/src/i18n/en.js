@@ -87,6 +87,8 @@ export default {
     unknownPath: "(Unknown path)",
     viewProject: "View Full Project ({n} .map files)",
     collapseProject: "Collapse Project View",
+    showMoreLeaks: "Show {n} more .map files",
+    leakListCapped: "Showing first {shown} of {total} .map files — use Project View for the full list",
   },
   sv: {
     highlighting: "Highlighting",

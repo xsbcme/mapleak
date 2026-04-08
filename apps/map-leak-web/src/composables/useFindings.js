@@ -26,7 +26,7 @@ export function useFindings() {
         limit: PAGE_SIZE,
         offset: page.value * PAGE_SIZE,
         ...(q ? { q } : {}),
-        ...(repoFilter.value ? { repo_status: repoFilter.value } : {}),
+        ...(repoFilter.value ? { repoStatus: repoFilter.value } : {}),
         sort: sortBy.value,
       });
       const res = await fetch(`/api/findings?${params}`);

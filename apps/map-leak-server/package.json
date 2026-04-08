@@ -4,8 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node scripts/kill-port.cjs && node src/index.js",
-    "dev": "node scripts/kill-port.cjs && node --watch src/index.js"
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

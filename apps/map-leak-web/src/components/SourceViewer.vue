@@ -114,40 +114,6 @@
         <button @click="emit('close')" class="sv-btn">✕</button>
       </div>
 
-      <!-- ── 标签栏 ──────────────────────────────────────────────── -->
-      <div
-        v-if="tabs.length"
-        class="sv-tabbar flex items-stretch overflow-x-auto shrink-0 border-b"
-        style="height: 36px; border-color: var(--c-border); background: var(--c-surface)"
-      >
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          class="sv-tab shrink-0 flex items-center gap-1.5 px-2.5 h-full border-r"
-          :class="tab.id === activeTabId ? 'sv-tab-active' : ''"
-          style="border-right-color: var(--c-border)"
-          @click="switchTab(tab.id)"
-        >
-          <span
-            class="w-1.5 h-1.5 rounded-full shrink-0"
-            :style="tab.fileIdx < 0 ? 'background:#94b4d8' : 'background:' + extColor(tab.path)"
-          >
-          </span>
-          <span
-            class="truncate text-[11px] font-mono max-w-[120px]"
-            :style="tab.id === activeTabId ? 'color:var(--c-accent)' : 'color:var(--c-text2)'"
-          >
-            {{ tab.label }}
-          </span>
-          <span class="sv-tab-close ml-0.5" @click.stop="closeTab(tab.id)">
-            <svg width="7" height="7" viewBox="0 0 7 7" fill="none" stroke="currentColor" stroke-width="1.5">
-              <line x1="0" y1="0" x2="7" y2="7" />
-              <line x1="7" y1="0" x2="0" y2="7" />
-            </svg>
-          </span>
-        </button>
-      </div>
-
       <!-- ── 加载中（tarball 提取）──────────────────────────────── -->
       <div
         v-if="loading"
@@ -215,17 +181,17 @@
                 {{ props.finding.description || "—" }}
               </span>
               <span
-                v-if="props.finding.weekly_downloads > 0"
+                v-if="props.finding.weeklyDownloads > 0"
                 class="shrink-0 text-[9px] px-1.5 py-0.5 rounded font-mono"
                 style="color: var(--c-muted); background: var(--c-surface); border: 1px solid var(--c-border)"
               >
-                ↓ {{ fmtDownloads(props.finding.weekly_downloads) }}/w
+                ↓ {{ fmtDownloads(props.finding.weeklyDownloads) }}/w
               </span>
               <span
                 class="shrink-0 text-[9px] px-1.5 py-0.5 rounded"
-                :style="repoStatusStyle(props.finding.repo_status)"
+                :style="repoStatusStyle(props.finding.repoStatus)"
               >
-                {{ t("repo." + (props.finding.repo_status ?? "unknown")) }}
+                {{ t("repo." + (props.finding.repoStatus ?? "unknown")) }}
               </span>
             </div>
             <div
@@ -433,6 +399,40 @@
 
         <!-- 右侧代码区 -->
         <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <!-- ── 标签栏 ────────────────────────────────── -->
+          <div
+            v-if="tabs.length"
+            class="sv-tabbar flex items-stretch overflow-x-auto shrink-0 border-b"
+            style="height: 36px; border-color: var(--c-border); background: var(--c-surface)"
+          >
+            <button
+              v-for="tab in tabs"
+              :key="tab.id"
+              class="sv-tab shrink-0 flex items-center gap-1.5 px-2.5 h-full border-r"
+              :class="tab.id === activeTabId ? 'sv-tab-active' : ''"
+              style="border-right-color: var(--c-border)"
+              @click="switchTab(tab.id)"
+            >
+              <span
+                class="w-1.5 h-1.5 rounded-full shrink-0"
+                :style="tab.fileIdx < 0 ? 'background:#94b4d8' : 'background:' + extColor(tab.path)"
+              >
+              </span>
+              <span
+                class="truncate text-[11px] font-mono max-w-[120px]"
+                :style="tab.id === activeTabId ? 'color:var(--c-accent)' : 'color:var(--c-text2)'"
+              >
+                {{ tab.label }}
+              </span>
+              <span class="sv-tab-close ml-0.5" @click.stop="closeTab(tab.id)">
+                <svg width="7" height="7" viewBox="0 0 7 7" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <line x1="0" y1="0" x2="7" y2="7" />
+                  <line x1="7" y1="0" x2="0" y2="7" />
+                </svg>
+              </span>
+            </button>
+          </div>
+
           <!-- README 渲染区 -->
           <div v-if="isReadmeActive" class="flex-1 overflow-auto px-8 py-6 sv-readme" style="background: var(--c-bg)">
             <div v-if="readmeHtml" v-html="readmeHtml" />

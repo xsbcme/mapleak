@@ -53,24 +53,40 @@ const fail = (code, msg) => ({ code, msg, data: null });
 
 // ― 工具 ――――――――――――――――――――――――――――――――――――――――――――――
 
-function deserializeLeak(lk) {
+function deserializeLeak(lk, { slimPaths = false } = {}) {
+  const raw = tryJson(lk.source_paths, []);
+  // 过滤第三方依赖路径（历史数据可能包含 node_modules/）
+  const filtered = raw.filter(p => !p.includes("node_modules/"));
+  const sp = slimPaths ? filtered.slice(0, 10) : filtered;
   return {
-    ...lk,
+    id: lk.id,
     mapFile: lk.map_file,
-    fileCount: lk.file_count,
+    // 若 DB 中的 file_count 包含第三方，用过滤后的实际数量覆盖
+    fileCount: filtered.length || lk.file_count,
     totalBytes: lk.total_bytes,
     hasCloudRef: !!lk.has_cloud_ref,
-    sourcePaths: tryJson(lk.source_paths, []),
+    sourcePaths: sp,
   };
 }
 
-function deserialize(r) {
+function deserialize(r, { slimPaths = false } = {}) {
   return {
-    ...r,
+    id: r.id,
+    name: r.name,
+    version: r.version,
+    tarball: r.tarball,
+    hasCloudRef: !!r.has_cloud_ref,
     author: tryJson(r.author, null),
     maintainers: tryJson(r.maintainers, []),
+    weeklyDownloads: r.weekly_downloads ?? 0,
+    repoUrl: r.repo_url ?? null,
+    repoStatus: r.repo_status ?? null,
+    description: r.description ?? null,
     keywords: tryJson(r.keywords, []),
-    leaks: (r.leaks ?? []).map(deserializeLeak),
+    foundAt: r.found_at ?? null,
+    mapCount: r.map_count ?? 0,
+    totalBytes: r.total_bytes ?? 0,
+    leaks: (r.leaks ?? []).map(lk => deserializeLeak(lk, { slimPaths })),
   };
 }
 
@@ -104,16 +120,16 @@ export async function buildApi() {
             limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
             offset: { type: "integer", minimum: 0, default: 0 },
             q: { type: "string", default: "" },
-            repo_status: { type: "string", default: "" },
-            sort: { type: "string", enum: ["time", "downloads", "map_count", "size"], default: "time" },
+            repoStatus: { type: "string", default: "" },
+            sort: { type: "string", enum: ["time", "downloads", "mapCount", "size"], default: "time" },
           },
         },
       },
     },
     async req => {
-      const { limit, offset, q, repo_status, sort } = req.query;
-      const result = queryFindings({ limit, offset, q, repo_status, sort });
-      return ok({ total: result.total, rows: result.rows.map(deserialize) });
+      const { limit, offset, q, repoStatus, sort } = req.query;
+      const result = queryFindings({ limit, offset, q, repoStatus, sort });
+      return ok({ total: result.total, rows: result.rows.map(r => deserialize(r, { slimPaths: true })) });
     }
   );
 

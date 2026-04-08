@@ -87,6 +87,8 @@ export default {
     unknownPath: "(未知路径)",
     viewProject: "查看完整工程（{n} 个 .map）",
     collapseProject: "收起工程视图",
+    showMoreLeaks: "展开更多 {n} 个 .map 文件",
+    leakListCapped: "仅展示前 {shown} 个，完整 {total} 个 .map 文件请使用工程视图",
   },
   sv: {
     highlighting: "高亮中",

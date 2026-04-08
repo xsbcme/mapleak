@@ -13,6 +13,7 @@ import pkg from "node-sqlite3-wasm";
 const { Database } = pkg;
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { rmSync, existsSync } from "node:fs";
 
 const PKG_ROOT = resolve(fileURLToPath(import.meta.url), "..", "..");
 const DB_PATH = resolve(process.env.DB_PATH ?? `${PKG_ROOT}/data.db`);
@@ -28,8 +29,33 @@ function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/**
+ * 清理 node-sqlite3-wasm 遗留的锁文件/目录（进程意外退出时不会自动清除）
+ * 必须在 Database() 打开之前调用，否则 WAL 模式下会报 SQLITE_BUSY/SQLITE_CANTOPEN
+ */
+function cleanStaleLocks() {
+  const targets = [
+    DB_PATH + ".lock", // node-sqlite3-wasm 用目录实现的进程锁
+    DB_PATH + "-wal",  // WAL 日志（异常退出时可能残留）
+    DB_PATH + "-shm",  // 共享内存文件
+  ];
+  for (const f of targets) {
+    if (existsSync(f)) {
+      try {
+        rmSync(f, { recursive: true, force: true });
+        console.log(`[db] 已清理遗留锁文件: ${f}`);
+      } catch (e) {
+        console.warn(`[db] 清理锁文件失败: ${f}: ${e.message}`);
+      }
+    }
+  }
+}
+
 export function getDb() {
   if (_db) return _db;
+
+  // 清理上次进程意外退出遗留的锁文件，防止 SQLITE_BUSY / SQLITE_CANTOPEN
+  cleanStaleLocks();
 
   let lastErr;
   for (let i = 0; i < 5; i++) {
@@ -37,6 +63,7 @@ export function getDb() {
       _db = new Database(DB_PATH);
       _db.exec("PRAGMA journal_mode = WAL");
       _db.exec("PRAGMA synchronous = NORMAL");
+      _db.exec("PRAGMA busy_timeout = 8000"); // 锁冲突时最多等待 8s，避免并发写直接 SQLITE_BUSY
       _db.exec("PRAGMA cache_size = -65536");
       _db.exec("PRAGMA mmap_size = 268435456"); // 256 MB 内存映射，加速大表顺序读
       _db.exec("PRAGMA temp_store = MEMORY"); // 临时结果集放内存，避免磁盘 I/O
@@ -224,7 +251,8 @@ export function saveFindings(name, version, tarball, leaks, meta = {}) {
   const repoUrl = typeof meta.repository === "string" ? meta.repository : (meta.repository?.url ?? null);
 
   const db = getDb();
-  db.exec("BEGIN");
+  // BEGIN IMMEDIATE：立即获取写锁，避免多个并发写事务在 COMMIT 阶段才发现锁冲突（SQLITE_BUSY）
+  db.exec("BEGIN IMMEDIATE");
   try {
     const stmt = db.prepare(`
       INSERT INTO findings
@@ -338,7 +366,7 @@ export function saveFindings(name, version, tarball, leaks, meta = {}) {
 
 // ─── 查询辅助 ─────────────────────────────────────────────────────────────────
 
-function assembleFromSummary(row) {
+function assembleFromSummary(row, { slim = false } = {}) {
   const { leaks_json, ...rest } = row;
   let leaks = [];
   try {
@@ -346,6 +374,7 @@ function assembleFromSummary(row) {
   } catch {
     /* ignore */
   }
+  if (slim && leaks.length > 20) leaks = leaks.slice(0, 20);
   return { ...rest, leaks };
 }
 
@@ -372,22 +401,22 @@ function buildFtsQuery(q) {
 const ORDER_MAP = {
   time: "found_at DESC",
   downloads: "weekly_downloads DESC, found_at DESC",
-  map_count: "map_count DESC, found_at DESC",
+  mapCount: "map_count DESC, found_at DESC",
   size: "total_bytes DESC, found_at DESC",
 };
 
 // ─── 查询：列表（分页 + 搜索 + 筛选）────────────────────────────────────────
 
-export function queryFindings({ limit = 50, offset = 0, q = "", repo_status = "", sort = "time" } = {}) {
+export function queryFindings({ limit = 50, offset = 0, q = "", repoStatus = "", sort = "time" } = {}) {
   const db = getDb();
   const order = ORDER_MAP[sort] ?? ORDER_MAP.time;
 
   const conds = [];
   const params = [];
 
-  if (repo_status) {
+  if (repoStatus) {
     conds.push("fs.repo_status = ?");
-    params.push(repo_status);
+    params.push(repoStatus);
   }
   if (q) {
     const ftsQ = buildFtsQuery(q);
@@ -403,13 +432,20 @@ export function queryFindings({ limit = 50, offset = 0, q = "", repo_status = ""
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
 
+  // 列表查询只取前 20 条 leaks（避免 map_count 极大的包把整个响应撑爆）
+  // 准确总数由 map_count 字段承载，前端显示用它而非 leaks.length
   const rows = db
-    .prepare(`SELECT * FROM findings_summary fs ${where} ORDER BY ${order} LIMIT ? OFFSET ?`)
+    .prepare(`
+      SELECT fs.id, fs.name, fs.version, fs.tarball,
+             fs.has_cloud_ref, fs.author, fs.maintainers, fs.weekly_downloads,
+             fs.repo_url, fs.repo_status, fs.description, fs.keywords,
+             fs.found_at, fs.map_count, fs.total_bytes, fs.leaks_json
+      FROM findings_summary fs ${where} ORDER BY ${order} LIMIT ? OFFSET ?`)
     .all([...params, limit, offset]);
 
   const total = db.prepare(`SELECT COUNT(*) AS n FROM findings_summary fs ${where}`).get([...params]).n;
 
-  return { rows: rows.map(assembleFromSummary), total };
+  return { rows: rows.map(r => assembleFromSummary(r, { slim: true })), total };
 }
 
 // ─── 按 findings.id 查单条（供 /api/extract/:id 使用）────────────────────────
@@ -418,11 +454,15 @@ export function getFindingById(id) {
   return getDb().prepare("SELECT * FROM findings WHERE id = ? LIMIT 1").get([id]);
 }
 
-// ─── 按 name+version 查分组详情（供 reporter 的 SSE 推送使用）────────────────
+// ─── 按 name+version 查分组详情 ─────────────────────────────────────────────
+// slim=true：leaks_json 截断为 20 条，用于 SSE 推送等展示场景
+// slim=false（默认）：返回完整 leaks_json，用于 /api/extract-package 需要所有 .map 路径
 
-export function getFindingGrouped(name, version) {
-  const row = getDb().prepare("SELECT * FROM findings_summary WHERE name = ? AND version = ?").get([name, version]);
-  return row ? assembleFromSummary(row) : null;
+export function getFindingGrouped(name, version, { slim = false } = {}) {
+  const row = getDb()
+    .prepare("SELECT * FROM findings_summary WHERE name = ? AND version = ?")
+    .get([name, version]);
+  return row ? assembleFromSummary(row, { slim }) : null;
 }
 
 // ─── 下载量刷新 ──────────────────────────────────────────────────────────────

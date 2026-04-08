@@ -12,7 +12,7 @@
         <select class="ui-input" :value="sortBy" @change="$emit('set-sort', $event.target.value)">
           <option value="time">{{ t("history.sortTime") }}</option>
           <option value="downloads">{{ t("history.sortDownloads") }}</option>
-          <option value="map_count">{{ t("history.sortMapCount") }}</option>
+          <option value="mapCount">{{ t("history.sortMapCount") }}</option>
           <option value="size">{{ t("history.sortSize") }}</option>
         </select>
         <select class="ui-input" :value="repoFilter" @change="$emit('filter', $event.target.value)">

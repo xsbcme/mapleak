@@ -47,7 +47,7 @@ cpSync(join(SERVER_DIR, "src"), join(OUT, "src"), { recursive: true });
 console.log("[pack] 复制前端产物 → upload/public/");
 cpSync(WEB_DIST, join(OUT, "public"), { recursive: true });
 
-// ── 5. 生产 package.json（删除 kill-port，纯 Linux 兼容）─────────────────────
+// ── 5. 生产 package.json（纯 Linux 兼容）──────────────────────────────────────
 console.log("[pack] 生成 package.json ...");
 const pkgJson = {
   name: "@map-leak/server",

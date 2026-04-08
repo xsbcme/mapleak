@@ -233,6 +233,8 @@ export async function extractAllSourceMaps(tarballUrl, targetMapFiles, { include
             const files = sources
               .map((p, i) => {
                 const c = contents[i];
+                // 过滤 node_modules 内的第三方依赖源码（路径含 node_modules/ 均视为第三方）
+                if (!includeNodeModules && p && p.includes("node_modules/")) return null;
                 return typeof c === "string" && c.length > 0
                   ? { index: i, path: p, bytes: Buffer.byteLength(c, "utf8"), content: c }
                   : null;
@@ -331,6 +333,8 @@ export async function extractSourceMap(tarballUrl, targetMapFile) {
             result = sources
               .map((p, i) => {
                 const c = contents[i];
+                // 单文件模式默认也过滤第三方依赖源码
+                if (p && p.includes("node_modules/")) return null;
                 return typeof c === "string" && c.length > 0
                   ? { index: i, path: p, bytes: Buffer.byteLength(c, "utf8"), content: c }
                   : null;

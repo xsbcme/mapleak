@@ -7,11 +7,8 @@
       :theme-icons="THEME_ICONS"
       :connected="connected"
       :clock="clock"
-      :refreshing-dl="refreshingDl"
-      :refresh-dl-msg="refreshDlMsg"
       @toggle-lang="toggleLang"
       @cycle-theme="cycleTheme"
-      @refresh-downloads="refreshDownloads"
       @open-notice="showNotice = true"
     />
 
@@ -202,59 +199,4 @@ watch(liveLeaks, () => {
   chartDebounceTimer = setTimeout(() => reloadCharts(), 1500);
 });
 
-// 刷新下载量
-const refreshingDl = ref(false);
-const refreshDlMsg = ref("");
-let refreshPollTimer = null;
-
-async function pollRefreshProgress() {
-  try {
-    const res = await fetch("/api/admin/refresh-downloads");
-    const json = await res.json();
-    const d = json.data ?? json;
-    if (d.running) {
-      const done = d.updated + d.skipped;
-      refreshDlMsg.value = t("header.refreshing", { done, total: d.total });
-      refreshPollTimer = setTimeout(pollRefreshProgress, 1500);
-    } else {
-      refreshingDl.value = false;
-      if (d.error) {
-        refreshDlMsg.value = t("header.failedMsg", { msg: d.error });
-      } else if (d.total > 0) {
-        const skippedTip =
-          d.skipped > 0
-            ? t("header.refreshDoneSkipped", { updated: d.updated, total: d.total, skipped: d.skipped })
-            : t("header.refreshDone", { updated: d.updated, total: d.total });
-        refreshDlMsg.value = skippedTip;
-        search(searchQuery.value);
-      }
-      setTimeout(() => {
-        refreshDlMsg.value = "";
-      }, 4000);
-    }
-  } catch {
-    refreshingDl.value = false;
-    refreshDlMsg.value = t("header.queryFailed");
-    setTimeout(() => {
-      refreshDlMsg.value = "";
-    }, 3000);
-  }
-}
-
-async function refreshDownloads() {
-  if (refreshingDl.value) return;
-  refreshingDl.value = true;
-  refreshDlMsg.value = t("header.starting");
-  clearTimeout(refreshPollTimer);
-  try {
-    await fetch("/api/admin/refresh-downloads", { method: "POST" });
-    refreshPollTimer = setTimeout(pollRefreshProgress, 1000);
-  } catch {
-    refreshingDl.value = false;
-    refreshDlMsg.value = t("header.failed");
-    setTimeout(() => {
-      refreshDlMsg.value = "";
-    }, 3000);
-  }
-}
 </script>

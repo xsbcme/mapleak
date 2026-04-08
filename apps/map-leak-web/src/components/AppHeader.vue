@@ -61,19 +61,6 @@
       >
         {{ themeIcons[theme] }}
       </button>
-      <!-- 刷新下载量 -->
-      <button
-        class="hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border transition-opacity hover:opacity-80"
-        style="color: var(--c-muted); border-color: var(--c-border)"
-        :disabled="refreshingDl"
-        @click="$emit('refresh-downloads')"
-        :title="refreshDlMsg || t('header.refreshTooltip')"
-      >
-        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" :class="refreshingDl ? 'animate-spin' : ''">
-          <path d="M13.65 2.35A8 8 0 1 0 15 8h-2a6 6 0 1 1-1.22-3.72L9 7h6V1l-1.35 1.35z" />
-        </svg>
-        {{ refreshDlMsg || t("header.refreshDownloads") }}
-      </button>
       <!-- 连接状态 -->
       <div
         class="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md border"
@@ -107,8 +94,6 @@ defineProps({
   themeIcons: { type: Object, required: true },
   connected: { type: Boolean, default: false },
   clock: { type: String, default: "" },
-  refreshingDl: { type: Boolean, default: false },
-  refreshDlMsg: { type: String, default: "" },
 });
-defineEmits(["toggle-lang", "cycle-theme", "refresh-downloads", "open-notice"]);
+defineEmits(["toggle-lang", "cycle-theme", "open-notice"]);
 </script>

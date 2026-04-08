@@ -32,13 +32,11 @@ import {
   getTopByDownloads,
   getTopBySize,
   getDailyActivity,
-  getDistinctPackageNames,
-  updateDownloadsByName,
   getFindingGrouped,
 } from "./db.js";
 import { leakEvents } from "./events.js";
 import { extractSourceMap, extractAllSourceMaps } from "./scanner/detector.js";
-import { getWeeklyDownloads, batchFetchDownloads } from "./scanner/popularity.js";
+import { getWeeklyDownloads } from "./scanner/popularity.js";
 import { createHash } from "node:crypto";
 import { tryJson, fetchReadme, npmFetch } from "./utils.js";
 
@@ -96,6 +94,26 @@ function deserialize(r, { slimPaths = false } = {}) {
 export async function buildApi() {
   const app = Fastify({ logger: { level: "warn" } });
   await app.register(cors, { origin: true });
+
+  // ── 管理接口 IP 白名单（仅本机/内网可访问 /api/admin/*）────────────────
+  // 生产环境通常由 Nginx 反向代理，真实 IP 已还原到 X-Forwarded-For 首项
+  const ADMIN_ALLOWED_CIDRS = (process.env.ADMIN_ALLOWED_IPS ?? "127.0.0.1,::1,::ffff:127.0.0.1")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  function isAdminAllowed(req) {
+    // 优先读 X-Forwarded-For 首项（Nginx 等反代场景），其次读 socket 直连 IP
+    const forwarded = req.headers["x-forwarded-for"];
+    const ip = (forwarded ? forwarded.split(",")[0] : req.socket?.remoteAddress ?? "").trim();
+    return ADMIN_ALLOWED_CIDRS.some(allowed => ip === allowed || ip.endsWith(`:${allowed}`));
+  }
+
+  app.addHook("preHandler", async (req, reply) => {
+    if (req.routerPath?.startsWith("/api/admin") && !isAdminAllowed(req)) {
+      return reply.code(403).send(fail(403, "Forbidden"));
+    }
+  });
 
   // ── 静态文件服务（生产模式）──────────────────────────────────────────────
   // 当 STATIC_DIR 目录存在时自动托管前端构建产物；SPA 回退到 index.html
@@ -228,71 +246,6 @@ export async function buildApi() {
   );
 
   // GET /api/readme?name=&version=  ── 从 npm registry 取包的 README 内容
-
-  // POST /api/admin/refresh-downloads  ── 后台补刷历史数据的周下载量（异步，立即返回）
-  // GET  /api/admin/refresh-downloads  ── 查询当前补刷进度
-  let refreshJob = null; // { running, total, updated, startedAt, finishedAt, error }
-
-  app.get("/api/admin/refresh-downloads", async () => {
-    if (!refreshJob) return ok({ running: false, total: 0, updated: 0 });
-    return ok(refreshJob);
-  });
-
-  app.post("/api/admin/refresh-downloads", async () => {
-    if (refreshJob?.running) return ok({ msg: "已在运行中", ...refreshJob });
-
-    const names = getDistinctPackageNames();
-    refreshJob = {
-      running: true,
-      total: names.length,
-      updated: 0,
-      skipped: 0,
-      startedAt: Date.now(),
-      finishedAt: null,
-      error: null,
-    };
-    if (names.length === 0) {
-      refreshJob = {
-        running: false,
-        total: 0,
-        updated: 0,
-        skipped: 0,
-        startedAt: Date.now(),
-        finishedAt: Date.now(),
-        error: null,
-      };
-      return ok(refreshJob);
-    }
-
-    // 后台异步执行，不阻塞请求
-    (async () => {
-      const BULK = 50; // 每批请求包数
-      const DELAY_MS = 300; // 批次间隔，避免限流
-      try {
-        for (let i = 0; i < names.length; i += BULK) {
-          const batch = names.slice(i, i + BULK);
-          const dlMap = await batchFetchDownloads(batch);
-          for (const [name, count] of dlMap) {
-            if (count > 0) {
-              updateDownloadsByName(name, count);
-              refreshJob.updated++;
-            } else {
-              refreshJob.skipped++;
-            }
-          }
-          // 批次间隔
-          if (i + BULK < names.length) await new Promise(r => setTimeout(r, DELAY_MS));
-        }
-      } catch (err) {
-        refreshJob.error = err.message;
-      } finally {
-        refreshJob.running = false;
-        refreshJob.finishedAt = Date.now();
-      }
-    })();
-
-    return ok({ msg: "已开始后台刷新", total: names.length });
-  });
 
   app.get(
     "/api/readme",

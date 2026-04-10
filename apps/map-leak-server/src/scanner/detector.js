@@ -23,8 +23,8 @@ import { createGunzip } from "node:zlib";
 import { extract as tarExtract } from "tar-stream";
 import { npmFetch, npmFetchRetry } from "../utils.js";
 
-/** 单个 .map 文件最大读取字节：100 MB，防止 OOM */
-const MAX_MAP_SIZE = 100 * 1024 * 1024;
+/** 单个 .map 文件最大读取字节：30 MB，防止 OOM（绝大多数合法 source map 远小于此值）*/
+const MAX_MAP_SIZE = 30 * 1024 * 1024;
 
 /**
  * 分析单个 tarball，返回所有泄露的 source map 信息

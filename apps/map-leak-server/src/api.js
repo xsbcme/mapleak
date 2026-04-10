@@ -45,6 +45,19 @@ const SERVER_DIR = resolve(fileURLToPath(import.meta.url), "..", "..");
 // STATIC_DIR 优先从环境变量读取；若未设置则尝试 <server_root>/../map-leak-web/dist（monorepo 布局）
 const STATIC_DIR = process.env.STATIC_DIR ?? resolve(SERVER_DIR, "..", "map-leak-web", "dist");
 
+// ─── 轻量 TTL 缓存（用于变化慢的统计/图表接口）────────────────────────────
+// 避免每次请求都走 SQLite，减少 GC 压力；数据落后最多 TTL_MS。
+const _apiCache = new Map(); // key -> { value, expireAt }
+function apiCacheGet(key) {
+  const c = _apiCache.get(key);
+  return c && c.expireAt > Date.now() ? c.value : null;
+}
+function apiCacheSet(key, value, ttlMs) {
+  _apiCache.set(key, { value, expireAt: Date.now() + ttlMs });
+}
+const STATS_TTL  = 10_000;   // stats  10s
+const CHARTS_TTL = 30_000;   // charts 30s
+
 // ─── 统一响应包装 ──────────────────────────────────────────────────────────
 
 const ok = data => ({ code: 200, msg: "", data });
@@ -97,15 +110,21 @@ export async function buildApi() {
 
   // ── 管理接口 IP 白名单（仅本机/内网可访问 /api/admin/*）────────────────
   // 生产环境通常由 Nginx 反向代理，真实 IP 已还原到 X-Forwarded-For 首项
+  // 仅在明确设置 TRUST_PROXY=1 时才读取 X-Forwarded-For，防止直接暴露时被伪造
+  const TRUST_PROXY = process.env.TRUST_PROXY === "1";
   const ADMIN_ALLOWED_CIDRS = (process.env.ADMIN_ALLOWED_IPS ?? "127.0.0.1,::1,::ffff:127.0.0.1")
     .split(",")
     .map(s => s.trim())
     .filter(Boolean);
 
   function isAdminAllowed(req) {
-    // 优先读 X-Forwarded-For 首项（Nginx 等反代场景），其次读 socket 直连 IP
-    const forwarded = req.headers["x-forwarded-for"];
-    const ip = (forwarded ? forwarded.split(",")[0] : req.socket?.remoteAddress ?? "").trim();
+    let ip = (req.socket?.remoteAddress ?? "").trim();
+    // 只有在可信代理模式下才读取 X-Forwarded-For，否则直接用 socket IP
+    // 防止无代理直连时攻击者伪造 X-Forwarded-For: 127.0.0.1 绕过白名单
+    if (TRUST_PROXY) {
+      const forwarded = req.headers["x-forwarded-for"];
+      if (forwarded) ip = forwarded.split(",")[0].trim();
+    }
     return ADMIN_ALLOWED_CIDRS.some(allowed => ip === allowed || ip.endsWith(`:${allowed}`));
   }
 
@@ -166,7 +185,13 @@ export async function buildApi() {
   );
 
   // GET /api/stats
-  app.get("/api/stats", async () => ok(getStats()));
+  app.get("/api/stats", async () => {
+    const cached = apiCacheGet("stats");
+    if (cached) return cached;
+    const result = ok(getStats());
+    apiCacheSet("stats", result, STATS_TTL);
+    return result;
+  });
 
   // GET /api/events  (SSE)
   app.get("/api/events", async (req, reply) => {
@@ -200,11 +225,24 @@ export async function buildApi() {
         },
       },
     },
-    async req => ok(getTimeline(req.query.hours))
+    async req => {
+      const key = `timeline:${req.query.hours}`;
+      const cached = apiCacheGet(key);
+      if (cached) return cached;
+      const result = ok(getTimeline(req.query.hours));
+      apiCacheSet(key, result, CHARTS_TTL);
+      return result;
+    }
   );
 
   // GET /api/charts/repo-status
-  app.get("/api/charts/repo-status", async () => ok(getRepoStatusBreakdown()));
+  app.get("/api/charts/repo-status", async () => {
+    const cached = apiCacheGet("repo-status");
+    if (cached) return cached;
+    const result = ok(getRepoStatusBreakdown());
+    apiCacheSet("repo-status", result, CHARTS_TTL);
+    return result;
+  });
 
   // GET /api/charts/top-downloads
   app.get(
@@ -217,7 +255,14 @@ export async function buildApi() {
         },
       },
     },
-    async req => ok(getTopByDownloads(req.query.limit))
+    async req => {
+      const key = `top-dl:${req.query.limit}`;
+      const cached = apiCacheGet(key);
+      if (cached) return cached;
+      const result = ok(getTopByDownloads(req.query.limit));
+      apiCacheSet(key, result, CHARTS_TTL);
+      return result;
+    }
   );
 
   // GET /api/charts/top-size
@@ -231,7 +276,14 @@ export async function buildApi() {
         },
       },
     },
-    async req => ok(getTopBySize(req.query.limit))
+    async req => {
+      const key = `top-sz:${req.query.limit}`;
+      const cached = apiCacheGet(key);
+      if (cached) return cached;
+      const result = ok(getTopBySize(req.query.limit));
+      apiCacheSet(key, result, CHARTS_TTL);
+      return result;
+    }
   );
 
   // GET /api/charts/daily
@@ -242,7 +294,14 @@ export async function buildApi() {
         querystring: { type: "object", properties: { days: { type: "integer", minimum: 1, maximum: 30, default: 7 } } },
       },
     },
-    async req => ok(getDailyActivity(req.query.days))
+    async req => {
+      const key = `daily:${req.query.days}`;
+      const cached = apiCacheGet(key);
+      if (cached) return cached;
+      const result = ok(getDailyActivity(req.query.days));
+      apiCacheSet(key, result, CHARTS_TTL);
+      return result;
+    }
   );
 
   // GET /api/readme?name=&version=  ── 从 npm registry 取包的 README 内容

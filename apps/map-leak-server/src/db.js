@@ -25,6 +25,23 @@ const SUMMARY_V = "1";
 
 let _db = null;
 
+// 缓存热路径 prepared statements，避免每次调用都重新编译
+// key: SQL 字符串，value: Statement 实例
+const _stmtCache = new Map();
+
+/**
+ * 获取或创建 prepared statement（进程内单例，不在 finalize）
+ * @param {string} sql
+ */
+function stmt(sql) {
+  let s = _stmtCache.get(sql);
+  if (!s) {
+    s = _db.prepare(sql);
+    _stmtCache.set(sql, s);
+  }
+  return s;
+}
+
 function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -64,8 +81,8 @@ export function getDb() {
       _db.exec("PRAGMA journal_mode = WAL");
       _db.exec("PRAGMA synchronous = NORMAL");
       _db.exec("PRAGMA busy_timeout = 8000"); // 锁冲突时最多等待 8s，避免并发写直接 SQLITE_BUSY
-      _db.exec("PRAGMA cache_size = -65536");
-      _db.exec("PRAGMA mmap_size = 268435456"); // 256 MB 内存映射，加速大表顺序读
+      _db.exec("PRAGMA cache_size = -8192");  // 8 MB 页缓存（原 64 MB，减少常驻内存）
+      _db.exec("PRAGMA mmap_size = 33554432"); // 32 MB 内存映射，兼顾读性能与内存占用（原 256 MB）
       _db.exec("PRAGMA temp_store = MEMORY"); // 临时结果集放内存，避免磁盘 I/O
       _db.exec("PRAGMA foreign_keys = ON");
       break;
@@ -210,6 +227,7 @@ export function getDb() {
 
 export function closeDb() {
   if (_db) {
+    _stmtCache.clear();
     _db.close();
     _db = null;
   }
@@ -218,28 +236,29 @@ export function closeDb() {
 // ─── 状态 KV ──────────────────────────────────────────────────────────────────
 
 export function getState(key) {
-  const row = getDb().prepare("SELECT value FROM state WHERE key = ? LIMIT 1").get([key]);
+  getDb();
+  const row = stmt("SELECT value FROM state WHERE key = ? LIMIT 1").get([key]);
   return row ? row.value : null;
 }
 
 export function setState(key, value) {
-  getDb()
-    .prepare("INSERT INTO state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+  getDb();
+  stmt("INSERT INTO state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     .run([key, String(value)]);
 }
 
 // ─── 已扫描记录 ──────────────────────────────────────────────────────────────
 
 export function isAlreadyScanned(name, version) {
-  return !!getDb().prepare("SELECT 1 FROM scanned WHERE name = ? AND version = ? LIMIT 1").get([name, version]);
+  getDb();
+  return !!stmt("SELECT 1 FROM scanned WHERE name = ? AND version = ? LIMIT 1").get([name, version]);
 }
 
 export function markScanned(name, version, hasLeak) {
-  getDb()
-    .prepare(
-      "INSERT INTO scanned (name, version, has_leak) VALUES (?, ?, ?) ON CONFLICT(name, version) DO UPDATE SET has_leak = excluded.has_leak"
-    )
-    .run([name, version, hasLeak ? 1 : 0]);
+  getDb();
+  stmt(
+    "INSERT INTO scanned (name, version, has_leak) VALUES (?, ?, ?) ON CONFLICT(name, version) DO UPDATE SET has_leak = excluded.has_leak"
+  ).run([name, version, hasLeak ? 1 : 0]);
 }
 
 // ─── 写入泄露记录 ────────────────────────────────────────────────────────────
@@ -254,7 +273,7 @@ export function saveFindings(name, version, tarball, leaks, meta = {}) {
   // BEGIN IMMEDIATE：立即获取写锁，避免多个并发写事务在 COMMIT 阶段才发现锁冲突（SQLITE_BUSY）
   db.exec("BEGIN IMMEDIATE");
   try {
-    const stmt = db.prepare(`
+    const insertStmt = db.prepare(`
       INSERT INTO findings
         (name, version, tarball, map_file, file_count, total_bytes, source_paths,
          has_cloud_ref, author, maintainers, weekly_downloads, repo_url, repo_status, description, keywords)
@@ -274,7 +293,7 @@ export function saveFindings(name, version, tarball, leaks, meta = {}) {
         keywords         = excluded.keywords
     `);
     for (const l of leaks) {
-      stmt.run([
+      insertStmt.run([
         name,
         version,
         tarball,
@@ -451,7 +470,8 @@ export function queryFindings({ limit = 50, offset = 0, q = "", repoStatus = "",
 // ─── 按 findings.id 查单条（供 /api/extract/:id 使用）────────────────────────
 
 export function getFindingById(id) {
-  return getDb().prepare("SELECT * FROM findings WHERE id = ? LIMIT 1").get([id]);
+  getDb();
+  return stmt("SELECT * FROM findings WHERE id = ? LIMIT 1").get([id]);
 }
 
 // ─── 按 name+version 查分组详情 ─────────────────────────────────────────────
@@ -459,36 +479,33 @@ export function getFindingById(id) {
 // slim=false（默认）：返回完整 leaks_json，用于 /api/extract-package 需要所有 .map 路径
 
 export function getFindingGrouped(name, version, { slim = false } = {}) {
-  const row = getDb()
-    .prepare("SELECT * FROM findings_summary WHERE name = ? AND version = ?")
-    .get([name, version]);
+  getDb();
+  const row = stmt("SELECT * FROM findings_summary WHERE name = ? AND version = ?").get([name, version]);
   return row ? assembleFromSummary(row, { slim }) : null;
 }
 
 // ─── 下载量刷新 ──────────────────────────────────────────────────────────────
 
 export function getDistinctPackageNames() {
-  return getDb()
-    .prepare("SELECT DISTINCT name FROM findings_summary")
-    .all([])
-    .map(r => r.name);
+  getDb();
+  return stmt("SELECT DISTINCT name FROM findings_summary").all([]).map(r => r.name);
 }
 
 export function updateDownloadsByName(name, count) {
-  const db = getDb();
-  db.prepare("UPDATE findings         SET weekly_downloads = ? WHERE name = ?").run([count, name]);
-  db.prepare("UPDATE findings_summary SET weekly_downloads = ? WHERE name = ?").run([count, name]);
+  getDb();
+  stmt("UPDATE findings         SET weekly_downloads = ? WHERE name = ?").run([count, name]);
+  stmt("UPDATE findings_summary SET weekly_downloads = ? WHERE name = ?").run([count, name]);
 }
 
 // ─── 统计 ─────────────────────────────────────────────────────────────────────
 
 export function getStats() {
-  const db = getDb();
+  getDb();
   const todayTs = Math.floor(Date.now() / 1000) - 86400;
   return {
-    totalLeaks: db.prepare("SELECT COUNT(*) AS n FROM findings_summary").get([]).n,
-    totalScanned: db.prepare("SELECT COUNT(*) AS n FROM scanned").get([]).n,
-    last24h: db.prepare("SELECT COUNT(*) AS n FROM findings_summary WHERE found_at >= ?").get([todayTs]).n,
+    totalLeaks: stmt("SELECT COUNT(*) AS n FROM findings_summary").get([]).n,
+    totalScanned: stmt("SELECT COUNT(*) AS n FROM scanned").get([]).n,
+    last24h: stmt("SELECT COUNT(*) AS n FROM findings_summary WHERE found_at >= ?").get([todayTs]).n,
   };
 }
 
@@ -496,72 +513,53 @@ export function getStats() {
 
 export function getTimeline(hours = 24) {
   const since = Math.floor(Date.now() / 1000) - hours * 3600;
-  return getDb()
-    .prepare(
-      `
-    SELECT strftime('%Y-%m-%dT%H:00:00', datetime(found_at, 'unixepoch')) AS hour,
-           COUNT(*) AS count
-    FROM findings_summary WHERE found_at >= ?
-    GROUP BY hour ORDER BY hour
-  `
-    )
-    .all([since]);
+  getDb();
+  return stmt(
+    `SELECT strftime('%Y-%m-%dT%H:00:00', datetime(found_at, 'unixepoch')) AS hour,
+            COUNT(*) AS count
+     FROM findings_summary WHERE found_at >= ?
+     GROUP BY hour ORDER BY hour`
+  ).all([since]);
 }
 
 export function getRepoStatusBreakdown() {
-  return getDb()
-    .prepare(
-      `
-    SELECT COALESCE(repo_status, 'unknown') AS status, COUNT(*) AS count
-    FROM findings_summary
-    GROUP BY status ORDER BY count DESC
-  `
-    )
-    .all([]);
+  getDb();
+  return stmt(
+    `SELECT COALESCE(repo_status, 'unknown') AS status, COUNT(*) AS count
+     FROM findings_summary
+     GROUP BY status ORDER BY count DESC`
+  ).all([]);
 }
 
 export function getTopByDownloads(limit = 10) {
-  return getDb()
-    .prepare(
-      `
-    SELECT name, MAX(weekly_downloads) AS downloads
-    FROM findings_summary GROUP BY name
-    ORDER BY downloads DESC LIMIT ?
-  `
-    )
-    .all([limit]);
+  getDb();
+  return stmt(
+    `SELECT name, MAX(weekly_downloads) AS downloads
+     FROM findings_summary GROUP BY name
+     ORDER BY downloads DESC LIMIT ?`
+  ).all([limit]);
 }
 
 export function getTopBySize(limit = 10) {
-  return getDb()
-    .prepare(
-      `
-    SELECT name, version, total_bytes AS total_size
-    FROM findings_summary
-    ORDER BY total_size DESC LIMIT ?
-  `
-    )
-    .all([limit]);
+  getDb();
+  return stmt(
+    `SELECT name, version, total_bytes AS total_size
+     FROM findings_summary
+     ORDER BY total_size DESC LIMIT ?`
+  ).all([limit]);
 }
 
 export function getDailyActivity(days = 7) {
   const since = Math.floor(Date.now() / 1000) - days * 86400;
-  const scanned = getDb()
-    .prepare(
-      `
-    SELECT strftime('%Y-%m-%d', datetime(scanned_at, 'unixepoch')) AS day, COUNT(*) AS count
-    FROM scanned WHERE scanned_at >= ? GROUP BY day ORDER BY day
-  `
-    )
-    .all([since]);
-  const leaks = getDb()
-    .prepare(
-      `
-    SELECT strftime('%Y-%m-%d', datetime(found_at, 'unixepoch')) AS day, COUNT(*) AS count
-    FROM findings_summary WHERE found_at >= ?
-    GROUP BY day ORDER BY day
-  `
-    )
-    .all([since]);
+  getDb();
+  const scanned = stmt(
+    `SELECT strftime('%Y-%m-%d', datetime(scanned_at, 'unixepoch')) AS day, COUNT(*) AS count
+     FROM scanned WHERE scanned_at >= ? GROUP BY day ORDER BY day`
+  ).all([since]);
+  const leaks = stmt(
+    `SELECT strftime('%Y-%m-%d', datetime(found_at, 'unixepoch')) AS day, COUNT(*) AS count
+     FROM findings_summary WHERE found_at >= ?
+     GROUP BY day ORDER BY day`
+  ).all([since]);
   return { scanned, leaks };
 }

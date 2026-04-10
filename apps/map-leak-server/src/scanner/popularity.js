@@ -31,8 +31,23 @@ const SEARCH_API = "https://registry.npmjs.org/-/v1/search";
 const OPEN_SOURCE_HOSTS = ["github.com", "gitlab.com", "bitbucket.org", "sr.ht", "codeberg.org", "gitee.com"];
 
 // 内存缓存：name -> { count: number, expireAt: number }
+// 容量上限 MAX_CACHE_SIZE，超出时按 FIFO 逐出最早插入的条目
 const downloadCache = new Map();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 小时
+const MAX_CACHE_SIZE = 2_000; // 最多缓存 2000 个包名，防止无界增长
+
+function cacheSet(name, count) {
+  if (downloadCache.size >= MAX_CACHE_SIZE) {
+    // Map 的迭代顺序是插入顺序，删除最旧的 100 条腾出空间
+    const toDelete = downloadCache.keys();
+    for (let i = 0; i < 100; i++) {
+      const { value, done } = toDelete.next();
+      if (done) break;
+      downloadCache.delete(value);
+    }
+  }
+  downloadCache.set(name, { count, expireAt: Date.now() + CACHE_TTL_MS });
+}
 
 // ─── 开源判断 ─────────────────────────────────────────────────────────────────
 
@@ -123,12 +138,12 @@ export async function batchFetchDownloads(names) {
         if (unscoped.length === 1) {
           const count = data.downloads ?? 0;
           result.set(unscoped[0], count);
-          downloadCache.set(unscoped[0], { count, expireAt: Date.now() + CACHE_TTL_MS });
+          cacheSet(unscoped[0], count);
         } else {
           for (const [name, stats] of Object.entries(data)) {
             const count = stats?.downloads ?? 0;
             result.set(name, count);
-            downloadCache.set(name, { count, expireAt: Date.now() + CACHE_TTL_MS });
+            cacheSet(name, count);
           }
         }
       } else {
@@ -147,7 +162,7 @@ export async function batchFetchDownloads(names) {
                 const d = await r.json();
                 const count = d.downloads ?? 0;
                 result.set(name, count);
-                downloadCache.set(name, { count, expireAt: Date.now() + CACHE_TTL_MS });
+                cacheSet(name, count);
               } catch {
                 /* ignore */
               }
@@ -175,7 +190,7 @@ export async function batchFetchDownloads(names) {
             const d = await r.json();
             const count = d.downloads ?? 0;
             result.set(name, count);
-            downloadCache.set(name, { count, expireAt: Date.now() + CACHE_TTL_MS });
+            cacheSet(name, count);
           } catch {
             /* ignore */
           }
